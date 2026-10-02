@@ -4,6 +4,7 @@ import json
 import subprocess
 import threading
 import webbrowser
+import ctypes
 import webview
 
 
@@ -41,6 +42,73 @@ def creation_flags():
     if sys.platform == "win32":
         return subprocess.CREATE_NO_WINDOW
     return 0
+
+
+# --- Comprobación e instalación de .NET Framework 4.8 ---
+def check_dotnet48():
+    """Devuelve True si .NET Framework 4.8 (o superior) está instalado."""
+    try:
+        import winreg
+        key = winreg.OpenKey(
+            winreg.HKEY_LOCAL_MACHINE,
+            r"SOFTWARE\Microsoft\NET Framework Setup\NDP\v4\Full"
+        )
+        release, _ = winreg.QueryValueEx(key, "Release")
+        winreg.CloseKey(key)
+        return release >= 528040
+    except Exception:
+        return False
+
+
+def run_dotnet_installer():
+    """Lanza el instalador de .NET 4.8 con permisos de administrador."""
+    candidates = [
+        os.path.join(RESOURCE_DIR, "dotnet48.exe"),
+        os.path.join(BASE_DIR, "dotnet48.exe"),
+    ]
+    installer = None
+    for c in candidates:
+        if os.path.exists(c):
+            installer = c
+            break
+
+    if installer is None:
+        # Aviso por si no está el instalador
+        ctypes.windll.user32.MessageBoxW(
+            0,
+            "Esta aplicación necesita .NET Framework 4.8 para funcionar.\n\n"
+            "No se encontró el instalador dotnet48.exe.\n"
+            "Descárgalo desde:\n"
+            "https://dotnet.microsoft.com/download/dotnet-framework/net48",
+            "Falta .NET Framework 4.8",
+            0x10  # MB_ICONERROR
+        )
+        return False
+
+    # Aviso previo
+    ctypes.windll.user32.MessageBoxW(
+        0,
+        "Se va a instalar .NET Framework 4.8.\n\n"
+        "Es un componente oficial de Microsoft necesario para que la app funcione.\n"
+        "El proceso puede tardar 1-2 minutos.\n\n"
+        "Cuando termine, vuelve a abrir la aplicación.",
+        "Instalando componente necesario",
+        0x40  # MB_ICONINFORMATION
+    )
+
+    try:
+        # ShellExecuteW con "runas" para forzar el aviso de administrador
+        result = ctypes.windll.shell32.ShellExecuteW(
+            None,
+            "runas",
+            installer,
+            "/passive /norestart",
+            None,
+            1
+        )
+        return result > 32
+    except Exception:
+        return False
 
 
 class Api:
@@ -225,6 +293,13 @@ class Api:
 
 
 if __name__ == "__main__":
+    # 1) Comprobar .NET Framework 4.8 antes de nada
+    if not check_dotnet48():
+        run_dotnet_installer()
+        # Salir para que el usuario reinicie/relance tras la instalación
+        sys.exit(0)
+
+    # 2) Arrancar la app normal con pywebview (ventana nativa)
     api = Api()
     html_path = os.path.join(RESOURCE_DIR, "index.html")
     window = webview.create_window(

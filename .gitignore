@@ -20,3 +20,6 @@ __pycache__/
 # Sistema
 .DS_Store
 Thumbs.db
+
+# Instalador de .NET (pesa mucho, no va en el repo)
+dotnet48.exe
